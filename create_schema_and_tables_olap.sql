@@ -23,16 +23,33 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
-CREATE OR REPLACE FUNCTION InsetToFilial (conection_strings, sql text)
-   RETURNS TEXT
+CREATE OR REPLACE FUNCTION InsetToFilial (
+   filial_db_names TEXT [],
+   sql_stmt TEXT
+   )
+RETURNS TABLE (
+   "Filial_db_name" TEXT,
+   "Result" TEXT)
 AS $$
-DECLARE
-   conection_strings text ARRAY;
 BEGIN
-   SELECT conection_string FROM
+   RETURN QUERY
 
-END;
-$$ LANGUAGE 'plpgsql';
+   SELECT db_name,
+      (
+         SELECT inserted."Result"
+         FROM dblink(
+               'host=localhost user=postgres password=12345 dbname=' || db_name,
+               sql_stmt
+            ) AS inserted("Result" TEXT)
+         )
+   FROM (
+      SELECT unnest(filial_db_names) AS db_name
+      ) AS db_names;
+END;$$
+
+LANGUAGE 'plpgsql';
+
+LANGUAGE 'plpgsql';
 
 DROP TABLE IF EXISTS "SaleFact";
 DROP TABLE IF EXISTS "Check";

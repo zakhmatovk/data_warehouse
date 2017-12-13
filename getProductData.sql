@@ -48,15 +48,7 @@ AS (
       SET
          "Name" = EXCLUDED."Name",
          "INN" = EXCLUDED."INN"
-      RETURNING "@Supplier"' AS stmt
+      ' AS stmt
    FROM supplier_data
    )
---SELECT * FROM suppliers_text
-
-SELECT *
-   FROM dblink(
-      'host=localhost user=postgres password=12345 dbname=Filial_east'::TEXT,
-      (select stmt from suppliers_text)
-      ) AS inserted (
-      "@Supplier" INT
-      )
+SELECT * FROM InsetToFilial(ARRAY['Filial_east', 'Filial_west'], (SELECT stmt FROM suppliers_text))
