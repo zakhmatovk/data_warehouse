@@ -48,6 +48,7 @@ CREATE TABLE "Card" (
     "CreateDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp(),
     "ModifyDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp()
 );
+ALTER SEQUENCE "Card_@Card_seq" RESTART WITH 10000000;
 
 CREATE TABLE "Check" (
     "@Check" serial PRIMARY KEY,
@@ -152,17 +153,17 @@ CREATE TRIGGER update_modify_datetime
 
 CREATE OR REPLACE FUNCTION getNewProducts (startDate timestamp, endDate timestamp)
    RETURNS TABLE (
-   "@Price" INT,
-   "Cost" FLOAT,
-   "CostSale" FLOAT,
-   "SetDate" timestamp,
-   "@Product" INT,
-   "Name" varchar(50),
-   "VendorCode" varchar(30),
-   "@Supplier" INT,
-   "SupplierName" varchar(50),
-   "INN" varchar(30)
-)
+      "@Price" INT,
+      "Cost" FLOAT,
+      "CostSale" FLOAT,
+      "SetDate" timestamp,
+      "@Product" INT,
+      "Name" varchar(50),
+      "VendorCode" varchar(30),
+      "@Supplier" INT,
+      "SupplierName" varchar(50),
+      "INN" varchar(30)
+   )
 AS $$
 BEGIN
    RETURN QUERY
@@ -183,6 +184,31 @@ BEGIN
       INNER JOIN "Supplier" AS supplier
          ON product."Supplier" = supplier."@Supplier"
       WHERE product."CreateDatetime" >= startDate
-         AND product."CreateDatetime" <= endDate ;
+         AND product."CreateDatetime" <= endDate;
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION getNewCards (startDate timestamp, endDate timestamp)
+   RETURNS TABLE (
+      "@Card" INT,
+      "Number" varchar(19),
+      "FirstName" varchar(50),
+      "MiddleName" varchar(50),
+      "LastName" varchar(50),
+      "BirthDate" date
+   )
+AS $$
+BEGIN
+   RETURN QUERY
+      SELECT
+         _card."@Card",
+         _card."Number",
+         _card."FirstName",
+         _card."MiddleName",
+         _card."LastName",
+         _card."BirthDate"
+      FROM "Card" AS _card
+      WHERE _card."ModifyDatetime" >= startDate
+         AND _card."ModifyDatetime" <= endDate;
 END;
 $$ LANGUAGE 'plpgsql';

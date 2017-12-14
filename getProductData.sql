@@ -113,4 +113,5 @@ insertTo AS (
    UNION
    SELECT 'Price', * FROM InsetToFilial(ARRAY['Filial_east', 'Warehouse'], (SELECT stmt FROM stmt_insert_price))
 )
-SELECT * FROM insertTo
+SELECT * FROM insertTo;
+Select * FROM UpdateCardsFromFilials(ARRAY['Filial_west'], '2016-01-01', '2018-01-01');

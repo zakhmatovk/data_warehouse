@@ -48,6 +48,73 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+CREATE OR REPLACE FUNCTION UpdateCardsFromFilials (
+   filial_db_names TEXT [],
+   startDate timestamp,
+   endDate timestamp
+   )
+   RETURNS TEXT
+AS $$
+BEGIN
+
+   WITH RECURSIVE source AS (
+      SELECT
+         unnest(filial_db_names) AS db_name,
+         NULL::INT AS "@Card",
+         NULL::TEXT AS "Number",
+         NULL::TEXT AS "FirstName",
+         NULL::TEXT AS "MiddleName",
+         NULL::TEXT AS "LastName",
+         NULL::Date AS "BirthDate",
+         1 AS level
+      UNION
+      SELECT
+         source.db_name,
+         inserted."@Card",
+         inserted."Number",
+         inserted."FirstName",
+         inserted."MiddleName",
+         inserted."LastName",
+         inserted."BirthDate",
+         source."level" + 1 AS "level"
+      FROM source, dblink(
+            'host=localhost user=postgres password=12345 dbname=' || source.db_name,
+            'SELECT * FROM getNewCards(''' || startDate || ''', ''' || endDate || ''')'
+         ) AS inserted(
+            "@Card" INT,
+            "Number" text,
+            "FirstName" text,
+            "MiddleName" text,
+            "LastName" text,
+            "BirthDate" date
+         )
+      WHERE source."level" = 1
+   ),
+   filtered_source AS (
+      SELECT * FROM source
+      WHERE "@Card" IS NOT NULL
+   )
+   INSERT INTO "Card"
+   SELECT
+      "@Card",
+      "Number",
+      "FirstName",
+      "MiddleName",
+      "LastName",
+      "BirthDate"
+   FROM filtered_source
+   ON CONFLICT ("@Card")
+   DO UPDATE
+   SET
+      "Number" = EXCLUDED."Number",
+      "FirstName" = EXCLUDED."FirstName",
+      "MiddleName" = EXCLUDED."MiddleName",
+      "LastName" = EXCLUDED."LastName",
+      "BirthDate" = EXCLUDED."BirthDate";
+   RETURN 'Complete';
+END;
+$$ LANGUAGE 'plpgsql';
+
 DROP TABLE IF EXISTS "SaleFact";
 DROP TABLE IF EXISTS "Check";
 DROP TABLE IF EXISTS "Card";
