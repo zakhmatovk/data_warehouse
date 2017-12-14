@@ -45,11 +45,8 @@ BEGIN
    FROM (
       SELECT unnest(filial_db_names) AS db_name
       ) AS db_names;
-END;$$
-
-LANGUAGE 'plpgsql';
-
-LANGUAGE 'plpgsql';
+END;
+$$ LANGUAGE 'plpgsql';
 
 DROP TABLE IF EXISTS "SaleFact";
 DROP TABLE IF EXISTS "Check";
