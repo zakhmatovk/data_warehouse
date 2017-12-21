@@ -487,6 +487,97 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+CREATE OR REPLACE FUNCTION FindProductPairs (
+   showcase_db_name TEXT,
+   startDate timestamp,
+   endDate timestamp
+)
+   RETURNS TABLE (
+      "Entity" TEXT,
+      "Showcase_db_name" TEXT,
+      "Result" TEXT
+   )
+AS $$
+BEGIN
+   RETURN QUERY
+      WITH source AS (
+         SELECT
+            main."Product",
+            main."Supplier",
+            sub."Product" AS "SubProduct",
+            sub."Supplier" AS "SubSupplier",
+            COUNT(main."Product") AS "Amount"
+
+         FROM "SaleFact" main
+         INNER JOIN "SaleFact" sub
+            ON main."Check" = sub."Check"
+            AND main."Store" = sub."Store"
+            AND main."Product" > sub."Product"
+         INNER JOIN "Date" d
+            ON main."Date" = d."@Date"
+         WHERE d."Date" >= startDate
+            AND d."Date" <= endDate
+         GROUP BY main."Product", sub."Product", main."Supplier", sub."Supplier"
+      ),
+      extension AS (
+         SELECT
+            source."Amount",
+            p1."@Product",
+            p1."Name" AS "ProductName",
+            p1."VendorCode",
+            s1."Name" AS "SupplierName",
+            p2."@Product" AS "@Product2",
+            p2."Name" AS "ProductName2",
+            p2."VendorCode" AS "VendorCode2",
+            s2."Name" AS "SupplierName2"
+         FROM source
+         INNER JOIN "Product" AS p1
+            ON p1."@Product" = source."Product"
+         INNER JOIN "Supplier" AS s1
+            ON s1."@Supplier" = source."Supplier"
+         INNER JOIN "Product" AS p2
+            ON p2."@Product" = source."SubProduct"
+         INNER JOIN "Supplier" AS s2
+            ON s2."@Supplier" = source."SubSupplier"
+
+         ORDER BY "Amount" DESC
+      ),
+      stmt_insert_pairs AS (
+         SELECT
+            'DROP TABLE IF EXISTS "ProductPairs";
+            CREATE TABLE "ProductPairs" (
+               "Amount" INT,
+               "@Product" INT,
+               "ProductName" varchar(50),
+               "VendorCode" varchar(30),
+               "SupplierName" varchar(50),
+               "@Product2" INT,
+               "ProductName2" varchar(50),
+               "VendorCode2" varchar(30),
+               "SupplierName2" varchar(50)
+            );
+            INSERT INTO "ProductPairs" ("Amount",
+               "@Product", "ProductName", "VendorCode", "SupplierName",
+               "@Product2", "ProductName2", "VendorCode2", "SupplierName2")
+               VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("Amount"),
+                  CoverInQuotes("@Product"),
+                  CoverInQuotes("ProductName"),
+                  CoverInQuotes("VendorCode"),
+                  CoverInQuotes("SupplierName"),
+                  CoverInQuotes("@Product2"),
+                  CoverInQuotes("ProductName2"),
+                  CoverInQuotes("VendorCode2"),
+                  CoverInQuotes("SupplierName2")
+               )
+               || ')', ', ') AS stmt
+         FROM extension
+      )
+      SELECT 'ProductPairs', * FROM InsetToFilial(ARRAY[showcase_db_name], (SELECT stmt FROM stmt_insert_pairs));
+END;
+$$ LANGUAGE 'plpgsql';
+
 
 DROP TABLE IF EXISTS "SaleFact";
 DROP TABLE IF EXISTS "Card";
