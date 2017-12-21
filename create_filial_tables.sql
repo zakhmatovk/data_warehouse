@@ -106,7 +106,7 @@ CREATE TABLE "Product_Check" (
     "Product" int NOT NULL,
     "Check" int NOT NULL,
     "Price" float NOT NULL,
-    "Count" int NOT NULL default 0,
+    "Count" float NOT NULL default 0,
     "CreateDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp(),
     "ModifyDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp()
 );
@@ -210,5 +210,40 @@ BEGIN
       FROM "Card" AS _card
       WHERE _card."ModifyDatetime" >= startDate
          AND _card."ModifyDatetime" <= endDate;
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION getChecks (startDate timestamp, endDate timestamp)
+   RETURNS TABLE (
+      "Check" INT,
+      "Card" INT,
+      "CheckDate" timestamp,
+      "Payed" BOOLEAN,
+      "PaymentForm" INT,
+      "Price" float,
+      "Count" float,
+      "Product" INT,
+      "Supplier" INT
+   )
+AS $$
+BEGIN
+   RETURN QUERY
+      SELECT
+         c."@Check" AS "Check",
+         c."Card",
+         c."CheckDate",
+         c."Payed",
+         c."PaymentForm",
+         pc."Price",
+         pc."Count",
+         pc."Product",
+         p."Supplier"
+      FROM "Check" c
+      INNER JOIN "Product_Check" pc
+         ON pc."Check" = c."@Check"
+      INNER JOIN "Product" p
+         ON pc."Product" = p."@Product"
+      WHERE c."CheckDate" >= startDate
+         AND c."CheckDate" <= endDate;
 END;
 $$ LANGUAGE 'plpgsql';

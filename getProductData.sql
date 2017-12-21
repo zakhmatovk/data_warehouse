@@ -1,5 +1,4 @@
-﻿set search_path = "public";
-WITH source
+﻿WITH source
 AS (
    SELECT *
    FROM dblink(
@@ -114,4 +113,5 @@ insertTo AS (
    SELECT 'Price', * FROM InsetToFilial(ARRAY['Filial_east', 'Warehouse'], (SELECT stmt FROM stmt_insert_price))
 )
 SELECT * FROM insertTo;
-Select * FROM UpdateCardsFromFilials(ARRAY['Filial_west'], '2016-01-01', '2018-01-01');
+Select * FROM UpdateCardsFromFilials(ARRAY['Filial_west', 'Filial_east'], '2016-01-01', '2018-01-01');
+Select * FROM UpdateChecksFromFilials(ARRAY['Filial_west', 'Filial_east'], '2016-01-01', '2018-01-01');

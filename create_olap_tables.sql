@@ -56,7 +56,6 @@ CREATE OR REPLACE FUNCTION UpdateCardsFromFilials (
    RETURNS TEXT
 AS $$
 BEGIN
-
    WITH RECURSIVE source AS (
       SELECT
          unnest(filial_db_names) AS db_name,
@@ -115,8 +114,106 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+CREATE OR REPLACE FUNCTION UpdateChecksFromFilials (
+   filial_db_names TEXT [],
+   startDate timestamp,
+   endDate timestamp
+   )
+   RETURNS TEXT
+AS $$
+BEGIN
+   WITH RECURSIVE source AS (
+      SELECT
+         unnest(filial_db_names) AS db_name,
+         NULL::INT AS "Check",
+         NULL::INT AS "Card",
+         NULL::timestamp AS "CheckDate",
+         NULL::BOOLEAN AS "Payed",
+         NULL::INT AS "PaymentForm",
+         NULL::FLOAT AS "Price",
+         NULL::FLOAT AS "Count",
+         NULL::INT AS "Product",
+         NULL::INT AS "Supplier",
+         1 AS level
+      UNION
+      SELECT
+         source.db_name,
+         inserted."Check",
+         inserted."Card",
+         inserted."CheckDate",
+         inserted."Payed",
+         inserted."PaymentForm",
+         inserted."Price",
+         inserted."Count",
+         inserted."Product",
+         inserted."Supplier",
+         source."level" + 1 AS "level"
+      FROM source, dblink(
+            'host=localhost user=postgres password=12345 dbname=' || source.db_name,
+            'SELECT * FROM getChecks(''' || startDate || ''', ''' || endDate || ''')'
+         ) AS inserted(
+            "Check" INT,
+            "Card" INT,
+            "CheckDate" timestamp,
+            "Payed" BOOLEAN,
+            "PaymentForm" INT,
+            "Price" float,
+            "Count" float,
+            "Product" INT,
+            "Supplier" INT
+         )
+      WHERE source."level" = 1
+   ),
+   filtered_source AS (
+      SELECT *,
+         store."@Store" AS "Store"
+      FROM source
+      INNER JOIN "Store" store
+         ON store."db_name" = source."db_name"
+      WHERE "Check" IS NOT NULL
+   ),
+   insert_date AS (
+      INSERT INTO "Date"("Date")
+      SELECT DISTINCT "CheckDate"
+      FROM filtered_source
+      RETURNING "@Date", "Date"
+   ),
+   source_with_date AS (
+      SELECT
+         s.*,
+         d."@Date"
+      FROM filtered_source AS s
+      INNER JOIN insert_date AS d
+         ON s."CheckDate" = d."Date"
+   )
+   INSERT INTO "SaleFact" ("Check", "Card", "Date", "Payed", "PaymentForm", "Price", "Count", "Product", "Supplier", "Store")
+   SELECT
+      "Check",
+      "Card",
+      "@Date",
+      "Payed",
+      "PaymentForm",
+      "Price",
+      "Count",
+      "Product",
+      "Supplier",
+      "Store"
+   FROM source_with_date
+   ON CONFLICT ("Check", "Product", "Store")
+   DO UPDATE
+   SET
+      "Card" = EXCLUDED."Card",
+      "Date" = EXCLUDED."Date",
+      "Payed" = EXCLUDED."Payed",
+      "PaymentForm" = EXCLUDED."PaymentForm",
+      "Price" = EXCLUDED."Price",
+      "Count" = EXCLUDED."Count",
+      "Supplier" = EXCLUDED."Supplier";
+   RETURN 'Complete';
+END;
+$$ LANGUAGE 'plpgsql';
+
 DROP TABLE IF EXISTS "SaleFact";
-DROP TABLE IF EXISTS "Check";
 DROP TABLE IF EXISTS "Card";
 DROP TABLE IF EXISTS "Price";
 DROP TABLE IF EXISTS "Product";
@@ -131,12 +228,6 @@ CREATE TABLE "Card" (
     "MiddleName" varchar(50),
     "LastName" varchar(50) NOT NULL,
     "BirthDate" date NOT NULL
-);
-
-CREATE TABLE "Check" (
-    "@Check" serial PRIMARY KEY,
-    "Payed" BOOLEAN NOT NULL DEFAULT FALSE,
-    "PaymentForm" INT CHECK ("PaymentForm" IN (1, 2))
 );
 
 CREATE TABLE "Supplier" (
@@ -173,7 +264,8 @@ ALTER TABLE "Product"
 CREATE TABLE "Store" (
     "@Store" serial PRIMARY KEY,
     "Name" varchar(50) NOT NULL,
-    "Address" varchar(50) NOT NULL
+    "Address" varchar(50) NOT NULL,
+    "db_name" varchar(50) NOT NULL
  );
 
 CREATE TABLE "Date" (
@@ -189,14 +281,17 @@ CREATE TABLE "Date" (
 );
 
 CREATE TABLE "SaleFact" (
-    "@SaleFact" serial PRIMARY KEY,
     "Product" int NOT NULL,
     "Card" int NOT NULL,
     "Supplier" int NOT NULL,
     "Check" int NOT NULL,
+    "Payed" BOOLEAN NOT NULL DEFAULT FALSE,
+    "PaymentForm" INT CHECK ("PaymentForm" IN (1, 2)),
     "Store" int NOT NULL,
     "Date" int NOT NULL,
-    "Price" float NOT NULL
+    "Price" float NOT NULL,
+    "Count" float NOT NULL,
+    PRIMARY KEY("Product", "Check", "Store")
  );
 
 ALTER TABLE "SaleFact"
@@ -213,11 +308,6 @@ ALTER TABLE "SaleFact"
     ADD CONSTRAINT "fk_Supplier"
     FOREIGN KEY ("Supplier")
     REFERENCES "Supplier"("@Supplier");
-
-ALTER TABLE "SaleFact"
-    ADD CONSTRAINT "Check"
-    FOREIGN KEY ("Check")
-    REFERENCES "Check"("@Check");
 
 ALTER TABLE "SaleFact"
     ADD CONSTRAINT "fk_Store"
