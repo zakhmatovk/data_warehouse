@@ -48,6 +48,136 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+CREATE OR REPLACE FUNCTION UpdateProducts (
+   source_filial TEXT,
+   filial_db_names TEXT [],
+   startDate timestamp,
+   endDate timestamp
+)
+RETURNS TABLE (
+   "Entity" TEXT,
+   "Filial_db_name" TEXT,
+   "Result" TEXT
+)
+AS $$
+BEGIN
+   RETURN QUERY
+      WITH source
+      AS (
+         SELECT *
+         FROM dblink(
+            'host=localhost user=postgres password=12345 dbname=' || source_filial,
+            'SELECT * FROM getNewProducts(''' || startDate || ''', ''' || endDate || ''')'
+         ) AS dataSet(
+            "@Price" INT,
+            "Cost" FLOAT,
+            "CostSale" FLOAT,
+            "SetDate" TIMESTAMP,
+            "@Product" INT,
+            "Name" VARCHAR(50),
+            "VendorCode" VARCHAR(30),
+            "@Supplier" INT,
+            "SupplierName" VARCHAR(50),
+            "INN" VARCHAR(30))
+      ),
+      supplier_data
+      AS (
+            SELECT DISTINCT
+               "@Supplier",
+               "SupplierName" AS "Name",
+               "INN"
+            FROM source
+         ),
+      stmt_insert_supplier
+      AS (
+         SELECT
+            'INSERT INTO "Supplier" ("@Supplier", "Name", "INN") VALUES '
+               || string_agg('('
+               || concat_ws(', ',
+                  CoverInQuotes("@Supplier"),
+                  CoverInQuotes("Name"),
+                  CoverInQuotes("INN")
+               )
+               || ')', ', ')
+               || ' ON CONFLICT ("@Supplier")
+               DO UPDATE
+               SET
+                  "Name" = EXCLUDED."Name",
+                  "INN" = EXCLUDED."INN"
+            ' AS stmt
+         FROM supplier_data
+         ),
+
+      product_data
+      AS (
+            SELECT DISTINCT
+               "@Product",
+               "Name",
+               "VendorCode",
+               "@Supplier" AS "Supplier"
+            FROM source
+         ),
+      stmt_insert_product
+      AS (
+         SELECT
+            'INSERT INTO "Product" ("@Product", "Name", "VendorCode", "Supplier") VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("@Product"),
+                  CoverInQuotes("Name"),
+                  CoverInQuotes("VendorCode"),
+                  CoverInQuotes("Supplier")
+               ) || ')', ', ')
+               || ' ON CONFLICT ("@Product")
+               DO UPDATE
+               SET
+                  "Name" = EXCLUDED."Name",
+                  "VendorCode" = EXCLUDED."VendorCode",
+                  "Supplier" = EXCLUDED."Supplier"
+            ' AS stmt
+         FROM product_data
+         ),
+
+      price_data
+      AS (
+            SELECT DISTINCT
+               "@Price",
+               "@Product" AS "Product",
+               "Cost",
+               "CostSale",
+               "SetDate"
+            FROM source
+         ),
+      stmt_insert_price
+      AS (
+         SELECT
+            'INSERT INTO "Price" ("@Price", "Product", "Cost", "CostSale", "SetDate") VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("@Price"),
+                  CoverInQuotes("Product"),
+                  CoverInQuotes("Cost"),
+                  CoverInQuotes("CostSale"),
+                  CoverInQuotes("SetDate")
+               )
+               || ')', ', ')
+               || ' ON CONFLICT ("@Price")
+               DO UPDATE
+               SET
+                  "Product" = EXCLUDED."Product",
+                  "Cost" = EXCLUDED."Cost",
+                  "CostSale" = EXCLUDED."CostSale",
+                  "SetDate" = EXCLUDED."SetDate"
+            ' AS stmt
+         FROM price_data
+         )
+      SELECT 'Suppler', * FROM InsetToFilial(filial_db_names, (SELECT stmt FROM stmt_insert_supplier))
+      UNION
+      SELECT 'Product', * FROM InsetToFilial(filial_db_names, (SELECT stmt FROM stmt_insert_product))
+      UNION
+      SELECT 'Price', * FROM InsetToFilial(filial_db_names, (SELECT stmt FROM stmt_insert_price));
+END;
+$$ LANGUAGE 'plpgsql';
+
+
 CREATE OR REPLACE FUNCTION UpdateCardsFromFilials (
    filial_db_names TEXT [],
    startDate timestamp,
@@ -212,6 +342,151 @@ BEGIN
    RETURN 'Complete';
 END;
 $$ LANGUAGE 'plpgsql';
+
+
+CREATE OR REPLACE FUNCTION SendCardsToFilial (
+   filial_db_name TEXT,
+   store_db_name TEXT
+)
+   RETURNS TABLE (
+      "Entity" TEXT,
+      "Filial_db_name" TEXT,
+      "Result" TEXT
+   )
+AS $$
+BEGIN
+   RETURN QUERY
+   WITH store AS (
+      SELECT
+         "@Store" * 10000000 AS _min,
+         ("@Store" + 1) * 10000000 AS _max
+      FROM "Store"
+      WHERE "db_name" = store_db_name
+      LIMIT 1
+   ),
+   stmt_insert_card
+      AS (
+         SELECT
+            'INSERT INTO "Card" ("@Card", "Number", "FirstName", "MiddleName", "LastName", "BirthDate") VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("@Card"),
+                  CoverInQuotes("Number"),
+                  CoverInQuotes("FirstName"),
+                  CoverInQuotes("MiddleName"),
+                  CoverInQuotes("LastName"),
+                  CoverInQuotes("BirthDate")
+               )
+               || ')', ', ')
+               || ' ON CONFLICT ("@Card")
+               DO UPDATE
+               SET
+                  "Number" = EXCLUDED."Number",
+                  "FirstName" = EXCLUDED."FirstName",
+                  "MiddleName" = EXCLUDED."MiddleName",
+                  "LastName" = EXCLUDED."LastName",
+                  "BirthDate" = EXCLUDED."BirthDate"
+            ' AS stmt
+         FROM "Card"
+         WHERE "@Card" >= (Select _min FROM store)
+            AND "@Card" < (Select _max FROM store)
+         )
+      SELECT 'Card', * FROM InsetToFilial(ARRAY[filial_db_name], (SELECT stmt FROM stmt_insert_card));
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION SendChecksToFilial (
+   filial_db_name TEXT,
+   store_db_name TEXT,
+   startDate timestamp,
+   endDate timestamp
+)
+   RETURNS TABLE (
+      "Entity" TEXT,
+      "Filial_db_name" TEXT,
+      "Result" TEXT
+   )
+AS $$
+BEGIN
+   RETURN QUERY
+      WITH store AS (
+         SELECT
+            "@Store"
+         FROM "Store"
+         WHERE "db_name" = store_db_name
+         LIMIT 1
+      ),
+      source AS (
+         SELECT
+            fact."Check",
+            fact."Card",
+            d."Date" AS "CheckDate",
+            fact."Payed",
+            fact."PaymentForm",
+            fact."Price",
+            fact."Count",
+            fact."Product",
+            fact."Supplier"
+         FROM "SaleFact" fact
+         INNER JOIN store
+            ON store."@Store" = fact."Store"
+         INNER JOIN "Date" d
+            ON d."@Date" = fact."Date"
+         WHERE d."Date" >= startDate
+            AND d."Date" <= endDate
+      ),
+      stmt_insert_check AS (
+         SELECT
+            'INSERT INTO "Check" ("@Check", "Card", "CheckDate", "Payed", "PaymentForm") VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("@Check"),
+                  CoverInQuotes("Card"),
+                  CoverInQuotes("CheckDate"),
+                  CoverInQuotes("Payed"),
+                  CoverInQuotes("PaymentForm")
+               )
+               || ')', ', ')
+               || ' ON CONFLICT ("@Check")
+               DO UPDATE
+               SET
+                  "Card" = EXCLUDED."Card",
+                  "CheckDate" = EXCLUDED."CheckDate",
+                  "Payed" = EXCLUDED."Payed",
+                  "PaymentForm" = EXCLUDED."PaymentForm"
+            ' AS stmt
+         FROM (
+            SELECT DISTINCT
+               "Check" AS "@Check",
+               "Card",
+               "CheckDate",
+               "Payed",
+               "PaymentForm"
+            FROM source
+         ) AS temp
+      ),
+      stmt_insert_product_check AS (
+         SELECT
+            'INSERT INTO "Product_Check" ("Product", "Check", "Price", "Count") VALUES '
+               || string_agg('(' || concat_ws(', ',
+                  CoverInQuotes("Product"),
+                  CoverInQuotes("Check"),
+                  CoverInQuotes("Price"),
+                  CoverInQuotes("Count")
+               )
+               || ')', ', ')
+               || ' ON CONFLICT ("Product", "Check")
+               DO UPDATE
+               SET
+                  "Price" = EXCLUDED."Price",
+                  "Count" = EXCLUDED."Count"
+            ' AS stmt
+         FROM source
+      )
+      SELECT 'Check', * FROM InsetToFilial(ARRAY[filial_db_name], (SELECT stmt FROM stmt_insert_check))
+      UNION
+      SELECT 'Product_Check', * FROM InsetToFilial(ARRAY[filial_db_name], (SELECT stmt FROM stmt_insert_product_check));
+END;
+$$ LANGUAGE 'plpgsql';
+
 
 DROP TABLE IF EXISTS "SaleFact";
 DROP TABLE IF EXISTS "Card";

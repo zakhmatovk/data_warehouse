@@ -108,7 +108,8 @@ CREATE TABLE "Product_Check" (
     "Price" float NOT NULL,
     "Count" float NOT NULL default 0,
     "CreateDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp(),
-    "ModifyDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp()
+    "ModifyDatetime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY("Product", "Check")
 );
 
 ALTER TABLE "Product_Check"
@@ -201,15 +202,15 @@ AS $$
 BEGIN
    RETURN QUERY
       SELECT
-         _card."@Card",
-         _card."Number",
-         _card."FirstName",
-         _card."MiddleName",
-         _card."LastName",
-         _card."BirthDate"
-      FROM "Card" AS _card
-      WHERE _card."ModifyDatetime" >= startDate
-         AND _card."ModifyDatetime" <= endDate;
+         "@Card",
+         "Number",
+         "FirstName",
+         "MiddleName",
+         "LastName",
+         "BirthDate"
+      FROM "Card"
+      WHERE "ModifyDatetime" >= startDate
+         AND "ModifyDatetime" <= endDate;
 END;
 $$ LANGUAGE 'plpgsql';
 
