@@ -12,6 +12,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Оборачиваем значения в кавычки, кроме NULL
 CREATE OR REPLACE FUNCTION CoverInQuotes (source_value anyelement)
    RETURNS TEXT
 AS $$
@@ -48,6 +49,8 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Получаем данные о продуктах, ценах и поставщиках из филиала {source_filial}
+-- Складываем эти данные в таблицы баз {filial_db_names}
 CREATE OR REPLACE FUNCTION UpdateProducts (
    source_filial TEXT,
    filial_db_names TEXT [],
@@ -136,7 +139,6 @@ BEGIN
             ' AS stmt
          FROM product_data
          ),
-
       price_data
       AS (
             SELECT DISTINCT
@@ -177,7 +179,9 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
-
+-- Получаем данные о картах клиентов из списка филиалов {filial_db_names}
+-- Складываем эти данные в хранилище
+-- Карты клиентов разных филиалов лежат в различных диапазонах
 CREATE OR REPLACE FUNCTION UpdateCardsFromFilials (
    filial_db_names TEXT [],
    startDate timestamp,
@@ -244,6 +248,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Получаем данные о покупках из списка филиалов {filial_db_names}
 CREATE OR REPLACE FUNCTION UpdateChecksFromFilials (
    filial_db_names TEXT [],
    startDate timestamp,
@@ -343,7 +348,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
-
+-- Перешлём данные о картах из хранилища по филиалу {store_db_name} в базу {filial_db_name}
 CREATE OR REPLACE FUNCTION SendCardsToFilial (
    filial_db_name TEXT,
    store_db_name TEXT
@@ -394,6 +399,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Перешлём данные о чеках из хранилища по филиалу {store_db_name} в базу {filial_db_name}
 CREATE OR REPLACE FUNCTION SendChecksToFilial (
    filial_db_name TEXT,
    store_db_name TEXT,
@@ -487,6 +493,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Поиск пар наиболее покупаемых товаров, создание таблицы запись в бд витрины {showcase_db_name}
 CREATE OR REPLACE FUNCTION FindProductPairs (
    showcase_db_name TEXT,
    startDate timestamp,

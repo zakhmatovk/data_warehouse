@@ -152,6 +152,7 @@ CREATE TRIGGER update_modify_datetime
    FOR EACH ROW
    EXECUTE PROCEDURE update_modify_datetime();
 
+-- Получение данный о продуктах, производителях и ценах на продукты
 CREATE OR REPLACE FUNCTION getNewProducts (startDate timestamp, endDate timestamp)
    RETURNS TABLE (
       "@Price" INT,
@@ -189,6 +190,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Получение данные о клубных картах клиентов
 CREATE OR REPLACE FUNCTION getNewCards (startDate timestamp, endDate timestamp)
    RETURNS TABLE (
       "@Card" INT,
@@ -214,6 +216,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- Получение данных о покупках
 CREATE OR REPLACE FUNCTION getChecks (startDate timestamp, endDate timestamp)
    RETURNS TABLE (
       "Check" INT,
